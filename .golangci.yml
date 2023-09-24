@@ -41,7 +41,7 @@ linters-settings:
   govet:
     check-shadowing: true
   goimports:
-    local-prefixes: telegram-bot-template
+    local-prefixes: go-lib
   gocritic:
     disabled-checks:
       - sloppyReassign
