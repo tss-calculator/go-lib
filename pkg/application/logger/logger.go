@@ -9,6 +9,7 @@ type Logger interface {
 	WithFields(Fields) Logger
 	Info(...interface{})
 	Error(error, ...interface{})
+	Warning(error, ...interface{})
 }
 
 type MainLogger interface {

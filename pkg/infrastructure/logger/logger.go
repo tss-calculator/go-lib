@@ -42,6 +42,10 @@ func (l *loggerImpl) Error(err error, args ...interface{}) {
 	l.FieldLogger.WithError(err).Error(args...)
 }
 
+func (l *loggerImpl) Warning(err error, args ...interface{}) {
+	l.FieldLogger.WithError(err).Warn(args...)
+}
+
 func (l *loggerImpl) FatalError(err error, args ...interface{}) {
 	l.FieldLogger.WithError(err).Fatal(args...)
 }
