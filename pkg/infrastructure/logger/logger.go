@@ -21,7 +21,7 @@ func NewTextLogger() logger.MainLogger {
 		FieldMap:        fieldMap,
 	})
 
-	return &loggerImpl{}
+	return &loggerImpl{impl}
 }
 
 func NewJSONLogger(config *Config) logger.MainLogger {
