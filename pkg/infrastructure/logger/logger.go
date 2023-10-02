@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"os"
 	"time"
 
 	"github.com/tss-calculator/go-lib/pkg/application/logger"
@@ -16,6 +17,9 @@ type Config struct {
 
 func NewTextLogger() logger.MainLogger {
 	impl := logrus.New()
+	if os.Getenv("DEBUG") != "" {
+		impl.SetLevel(logrus.DebugLevel)
+	}
 	impl.SetFormatter(&logrus.TextFormatter{
 		TimestampFormat: time.RFC3339Nano,
 		FieldMap:        fieldMap,
@@ -26,6 +30,9 @@ func NewTextLogger() logger.MainLogger {
 
 func NewJSONLogger(config *Config) logger.MainLogger {
 	impl := logrus.New()
+	if os.Getenv("DEBUG") != "" {
+		impl.SetLevel(logrus.DebugLevel)
+	}
 	impl.SetFormatter(&logrus.JSONFormatter{
 		TimestampFormat: time.RFC3339Nano,
 		FieldMap:        fieldMap,
