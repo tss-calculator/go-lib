@@ -10,6 +10,7 @@ type Logger interface {
 	Info(...interface{})
 	Error(error, ...interface{})
 	Warning(error, ...interface{})
+	Debug(...interface{})
 }
 
 type MainLogger interface {
