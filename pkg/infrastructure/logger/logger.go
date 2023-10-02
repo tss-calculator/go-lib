@@ -14,16 +14,14 @@ type Config struct {
 	AppName string
 }
 
-func NewTextLogger(config *Config) logger.MainLogger {
+func NewTextLogger() logger.MainLogger {
 	impl := logrus.New()
 	impl.SetFormatter(&logrus.TextFormatter{
 		TimestampFormat: time.RFC3339Nano,
 		FieldMap:        fieldMap,
 	})
 
-	return &loggerImpl{
-		FieldLogger: impl.WithField(appNameKey, config.AppName),
-	}
+	return &loggerImpl{}
 }
 
 func NewJSONLogger(config *Config) logger.MainLogger {
