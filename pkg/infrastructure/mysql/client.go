@@ -7,6 +7,15 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+type Client interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
+	Exec(query string, args ...interface{}) (sql.Result, error)
+
+	Select(dest interface{}, query string, args ...interface{}) error
+	Get(dest interface{}, query string, args ...interface{}) error
+}
+
 type ClientContext interface {
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
@@ -17,12 +26,14 @@ type ClientContext interface {
 }
 
 type Transaction interface {
+	Client
 	ClientContext
 	Commit() error
 	Rollback() error
 }
 
 type TransactionalClient interface {
+	Client
 	ClientContext
 	BeginTransaction() (Transaction, error)
 }
