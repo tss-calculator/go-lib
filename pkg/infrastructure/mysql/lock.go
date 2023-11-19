@@ -1,51 +1,91 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
-	stderrors "errors"
-
-	"github.com/pkg/errors"
+	"errors"
+	"time"
 )
 
-var ErrLockTimeout = stderrors.New("lock timed out")
-var ErrLockNotLocked = stderrors.New("lock not locked")
-var ErrLockNotFound = stderrors.New("lock not found")
+var (
+	ErrLockTimeout   = errors.New("lock timed out")
+	ErrLockNotLocked = errors.New("lock not locked")
+	ErrLockNotFound  = errors.New("lock not found")
+)
 
-const lockTimeoutSeconds = 5
+type LockFactory interface {
+	NewLock(ctx context.Context, lockName string, timeout time.Duration) (Lock, error)
+}
 
-func NewLock(client Client, lockName string) Lock {
-	return Lock{
-		client:   client,
-		lockName: lockName,
+type Lock interface {
+	Unlock() error
+}
+
+func NewLockFactory(connectionPool ConnectionPool) LockFactory {
+	return &lockFactory{connectionPool: connectionPool}
+}
+
+type lockFactory struct {
+	connectionPool ConnectionPool
+}
+
+func (factory *lockFactory) NewLock(ctx context.Context, lockName string, timeout time.Duration) (Lock, error) {
+	conn, err := factory.connectionPool.TransactionalConnection(ctx)
+	if err != nil {
+		return nil, err
 	}
+
+	lock := lockImpl{
+		ctx:      ctx,
+		lockName: lockName,
+		timeout:  timeout,
+		conn:     conn,
+	}
+
+	err = lock.Lock()
+	if err != nil {
+		err = errors.Join(err, conn.Close())
+		return nil, err
+	}
+
+	return &lock, err
 }
 
-type Lock struct {
-	client   Client
+type lockImpl struct {
+	ctx      context.Context
 	lockName string
+	timeout  time.Duration
+	conn     TransactionalConnection
 }
 
-func (l *Lock) Lock() error {
+func (l *lockImpl) Lock() error {
 	const sqlQuery = "SELECT GET_LOCK(SUBSTRING(CONCAT(?, '.', DATABASE()), 1, 64), ?)"
 	var result int
-	err := l.client.Get(&result, sqlQuery, l.lockName, lockTimeoutSeconds)
+	err := l.conn.GetContext(l.ctx, &result, sqlQuery, l.lockName, int(l.timeout.Seconds()))
 	if result == 0 && err == nil {
-		return errors.WithStack(ErrLockTimeout)
+		return ErrLockTimeout
 	}
-	return errors.WithStack(err)
+	return err
 }
 
-func (l *Lock) Unlock() error {
+func (l *lockImpl) Unlock() (err error) {
+	defer func() {
+		freeErr := l.conn.Close()
+		err = errors.Join(err, freeErr)
+	}()
+
 	const sqlQuery = "SELECT RELEASE_LOCK(SUBSTRING(CONCAT(?, '.', DATABASE()), 1, 64))"
 	var result sql.NullInt32
-	err := l.client.Get(&result, sqlQuery, l.lockName)
+	err = l.conn.GetContext(l.ctx, &result, sqlQuery, l.lockName)
 	if err == nil {
 		if !result.Valid {
-			return errors.WithStack(ErrLockNotFound)
+			err = ErrLockNotFound
+			return err
 		}
 		if result.Int32 == 0 {
-			return errors.WithStack(ErrLockNotLocked)
+			err = ErrLockNotLocked
+			return err
 		}
 	}
-	return errors.WithStack(err)
+	return err
 }
