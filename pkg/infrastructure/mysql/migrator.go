@@ -5,71 +5,66 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 )
-
-const migratorTimeout = 5 * time.Second
 
 type Migrator interface {
 	MigrateUp() error
 }
 
-func NewMigrator(ctx context.Context, migrationsDir string, factory LockableUnitOfWorkFactory) Migrator {
+func NewMigrator(ctx context.Context, migrationsDir string, client ClientContext) Migrator {
 	return &migrator{
 		ctx:           ctx,
 		migrationsDir: migrationsDir,
-		factory:       factory,
+		client:        client,
 	}
 }
 
 type migrator struct {
 	ctx           context.Context
 	migrationsDir string
-	factory       LockableUnitOfWorkFactory
+	client        ClientContext
 }
 
 func (m *migrator) MigrateUp() error {
-	return m.executeUnitOfWork(m.ctx, func(client ClientContext) error {
-		err := m.createMigrationVersionsTable(client)
+	err := m.createMigrationVersionsTable()
+	if err != nil {
+		return err
+	}
+
+	migrations, err := m.listMigrations()
+	if err != nil {
+		return err
+	}
+
+	executedMigrations, err := m.listExecutedMigrationVersions()
+	if err != nil {
+		return err
+	}
+
+	for _, migration := range migrations {
+		if executedMigrations[migration.Version] {
+			continue
+		}
+
+		err = m.executeMigration(migration)
 		if err != nil {
 			return err
 		}
 
-		migrations, err := m.listMigrations()
+		err = m.saveMigrationVersion(migration.Version)
 		if err != nil {
 			return err
 		}
+	}
 
-		executedMigrations, err := m.listExecutedMigrationVersions(client)
-		if err != nil {
-			return err
-		}
-
-		for _, migration := range migrations {
-			if executedMigrations[migration.Version] {
-				continue
-			}
-
-			err = m.executeMigration(client, migration)
-			if err != nil {
-				return err
-			}
-
-			err = m.saveMigrationVersion(client, migration.Version)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+	return nil
 }
 
-func (m *migrator) createMigrationVersionsTable(client ClientContext) error {
+func (m *migrator) createMigrationVersionsTable() error {
 	const sqlQuery = `CREATE TABLE IF NOT EXISTS migration_versions (version VARCHAR(50) NOT NULL)`
-	_, err := client.ExecContext(m.ctx, sqlQuery)
+	_, err := m.client.ExecContext(m.ctx, sqlQuery)
 	return errors.WithStack(err)
 }
 
@@ -105,11 +100,11 @@ func (m *migrator) getVersionFromFilename(fileName string) string {
 	return strings.Split(fileName, "_")[0]
 }
 
-func (m *migrator) listExecutedMigrationVersions(client ClientContext) (map[string]bool, error) {
+func (m *migrator) listExecutedMigrationVersions() (map[string]bool, error) {
 	const sqlQuery = `SELECT version FROM migration_versions`
 
 	var versions []string
-	err := client.SelectContext(m.ctx, &versions, sqlQuery)
+	err := m.client.SelectContext(m.ctx, &versions, sqlQuery)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -122,33 +117,20 @@ func (m *migrator) listExecutedMigrationVersions(client ClientContext) (map[stri
 	return result, nil
 }
 
-func (m *migrator) executeMigration(client ClientContext, migration migrationInfo) error {
+func (m *migrator) executeMigration(migration migrationInfo) error {
 	content, err := os.ReadFile(migration.FilePath)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	_, err = client.ExecContext(m.ctx, string(content))
+	_, err = m.client.ExecContext(m.ctx, string(content))
 	return errors.WithStack(err)
 }
 
-func (m *migrator) saveMigrationVersion(client ClientContext, version string) error {
+func (m *migrator) saveMigrationVersion(version string) error {
 	const sqlQuery = `INSERT INTO migration_versions SET version = ?`
-	_, err := client.ExecContext(m.ctx, sqlQuery, version)
+	_, err := m.client.ExecContext(m.ctx, sqlQuery, version)
 	return errors.WithStack(err)
-}
-
-func (m *migrator) executeUnitOfWork(ctx context.Context, f func(ClientContext) error) error {
-	unitOfWork, err := m.factory.NewLockableUnitOfWork(ctx, "", migratorTimeout)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = unitOfWork.Complete(err)
-	}()
-
-	err = f(unitOfWork.ClientContext())
-	return err
 }
 
 type migrationInfo struct {
