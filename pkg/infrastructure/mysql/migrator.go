@@ -81,7 +81,7 @@ func (m *migrator) listMigrations() ([]migrationInfo, error) {
 
 	result := make([]migrationInfo, 0, len(files))
 	for _, file := range files {
-		if file.IsDir() {
+		if !m.isUpMigrationFile(file) {
 			continue
 		}
 
@@ -95,6 +95,10 @@ func (m *migrator) listMigrations() ([]migrationInfo, error) {
 	}
 
 	return result, nil
+}
+
+func (m *migrator) isUpMigrationFile(file os.DirEntry) bool {
+	return !file.IsDir() && strings.Contains(file.Name(), ".up.")
 }
 
 func (m *migrator) getVersionFromFilename(fileName string) string {
