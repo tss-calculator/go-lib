@@ -138,7 +138,7 @@ func (m *migrator) saveMigrationVersion(client ClientContext, version string) er
 	return errors.WithStack(err)
 }
 
-func (m *migrator) executeUnitOfWork(ctx context.Context, f func(ClientContext) error) (err error) {
+func (m *migrator) executeUnitOfWork(ctx context.Context, f func(ClientContext) error) error {
 	unitOfWork, err := m.factory.NewLockableUnitOfWork(ctx, "", migratorTimeout)
 	if err != nil {
 		return err
