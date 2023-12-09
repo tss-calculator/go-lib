@@ -50,7 +50,7 @@ func (m *migrator) MigrateUp() error {
 
 		err = m.executeMigration(migration)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "error executing migration %s", migration.Version)
 		}
 
 		err = m.saveMigrationVersion(migration.Version)
